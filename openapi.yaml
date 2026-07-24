@@ -1,0 +1,461 @@
+openapi: 3.0.3
+info:
+  title: Storellet Snake Game API
+  version: 1.0.0
+  description: >-
+    API contract for starting Storellet Snake game sessions, enforcing daily
+    attempts, submitting final scores and returning coupon reward eligibility.
+servers:
+  - url: http://localhost:3000/api/v1
+    description: Local mock server
+  - url: https://api.example.com/api/v1
+    description: Production placeholder
+security:
+  - bearerAuth: []
+tags:
+  - name: Game
+  - name: Session
+  - name: User
+paths:
+  /game/config:
+    get:
+      tags: [Game]
+      summary: Get game and reward configuration
+      operationId: getGameConfig
+      responses:
+        '200':
+          description: Current server-side game configuration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GameConfig'
+  /game/users/{userId}/status:
+    get:
+      tags: [User]
+      summary: Get a player's daily attempt status
+      operationId: getPlayerStatus
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      responses:
+        '200':
+          description: Player attempt status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlayerStatus'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /game/sessions/start:
+    post:
+      tags: [Session]
+      summary: Validate eligibility and create a game session
+      operationId: startGameSession
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StartSessionRequest'
+      responses:
+        '201':
+          description: Session created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StartSessionResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '402':
+          description: Insufficient membership points for a paid attempt
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Daily attempt limit reached
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Error'
+                  - type: object
+                    properties:
+                      attemptsUsed:
+                        type: integer
+                      attemptsRemaining:
+                        type: integer
+  /game/sessions/{sessionId}/finish:
+    post:
+      tags: [Session]
+      summary: Finish a session and calculate reward eligibility
+      operationId: finishGameSession
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FinishSessionRequest'
+      responses:
+        '200':
+          description: Result accepted and reward status returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FinishSessionResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Session not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Session state conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /game/sessions/{sessionId}:
+    get:
+      tags: [Session]
+      summary: Get session status for reconciliation or UAT
+      operationId: getGameSession
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+      responses:
+        '200':
+          description: Session record
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionRecord'
+        '404':
+          description: Session not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    UserId:
+      name: userId
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Storellet member user ID. Production should derive or verify it against the access token.
+    SessionId:
+      name: sessionId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema:
+        type: string
+        minLength: 8
+        maxLength: 128
+      description: Unique key generated by the client for safe retry.
+  responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unauthorized:
+      description: Missing or invalid authentication
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Forbidden:
+      description: Authenticated user is not allowed to access the resource
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+  schemas:
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          example: VALIDATION_ERROR
+        message:
+          type: string
+          example: "Missing fields: userId"
+        traceId:
+          type: string
+          nullable: true
+    RewardTier:
+      type: object
+      required: [minScore, rewardCode, message]
+      properties:
+        minScore:
+          type: integer
+          minimum: 0
+        maxScore:
+          type: integer
+          nullable: true
+        rewardCode:
+          type: string
+        couponTemplateCode:
+          type: string
+          nullable: true
+        message:
+          type: string
+    GameConfig:
+      type: object
+      required: [gameId, campaignId, timezone, attempts, rewardTiers, clientRules]
+      properties:
+        gameId:
+          type: string
+          example: storellet-snake
+        campaignId:
+          type: string
+          example: wing-nin-snake-uat
+        timezone:
+          type: string
+          example: Asia/Hong_Kong
+        attempts:
+          type: object
+          required: [maxPerDay, freePerDay, pointsPerExtraAttempt]
+          properties:
+            maxPerDay:
+              type: integer
+              example: 3
+            freePerDay:
+              type: integer
+              example: 1
+            pointsPerExtraAttempt:
+              type: integer
+              example: 10
+        rewardTiers:
+          type: array
+          items:
+            $ref: '#/components/schemas/RewardTier'
+        clientRules:
+          type: object
+          additionalProperties: true
+    PlayerStatus:
+      type: object
+      required: [userId, date, timezone, attemptsUsed, attemptsRemaining, nextAttemptPointsCost]
+      properties:
+        userId:
+          type: string
+        date:
+          type: string
+          format: date
+        timezone:
+          type: string
+        attemptsUsed:
+          type: integer
+        attemptsRemaining:
+          type: integer
+        nextAttemptPointsCost:
+          type: integer
+    StartSessionRequest:
+      type: object
+      required: [userId, gameId, clientSessionId]
+      properties:
+        userId:
+          type: string
+          example: '139476290'
+        gameId:
+          type: string
+          example: storellet-snake
+        clientSessionId:
+          type: string
+          example: 0ea1947a-56c8-4a65-ae0e-749972491738
+        platform:
+          type: string
+          enum: [ios, android, webview, web]
+        appVersion:
+          type: string
+          example: 1.2.1
+        deviceIdHash:
+          type: string
+          nullable: true
+          description: Optional privacy-preserving device identifier hash.
+    StartSessionResponse:
+      type: object
+      required:
+        - sessionId
+        - gameId
+        - campaignId
+        - startedAt
+        - attemptNo
+        - attemptsRemaining
+        - isFreeAttempt
+        - pointsCharged
+        - sessionStatus
+      properties:
+        sessionId:
+          type: string
+          format: uuid
+        gameId:
+          type: string
+        campaignId:
+          type: string
+        startedAt:
+          type: string
+          format: date-time
+        attemptNo:
+          type: integer
+          minimum: 1
+        attemptsRemaining:
+          type: integer
+          minimum: 0
+        isFreeAttempt:
+          type: boolean
+        pointsCharged:
+          type: integer
+          minimum: 0
+        pointsTransactionId:
+          type: string
+          nullable: true
+          description: Production response should return the actual points ledger transaction ID.
+        sessionStatus:
+          type: string
+          enum: [STARTED]
+        serverNonce:
+          type: string
+          nullable: true
+          description: Production may return a nonce for anti-cheat telemetry signing.
+    FinishSessionRequest:
+      type: object
+      required: [userId, score, durationMs, endReason, clientEventId]
+      properties:
+        userId:
+          type: string
+        score:
+          type: integer
+          minimum: 0
+          maximum: 99999
+        durationMs:
+          type: integer
+          minimum: 0
+          maximum: 1300000
+        endReason:
+          type: string
+          example: 撞到障礙物
+        clientEventId:
+          type: string
+        clientFinishedAt:
+          type: string
+          format: date-time
+        telemetryDigest:
+          type: string
+          nullable: true
+          description: Optional signed digest of gameplay events for production anti-cheat validation.
+    RewardResult:
+      type: object
+      required: [eligible, status, message]
+      properties:
+        eligible:
+          type: boolean
+        status:
+          type: string
+          enum: [NOT_ELIGIBLE, PENDING_ISSUANCE, ISSUED, ISSUE_FAILED]
+        rewardCode:
+          type: string
+          nullable: true
+        couponTemplateCode:
+          type: string
+          nullable: true
+        couponId:
+          type: string
+          nullable: true
+        message:
+          type: string
+        validDaysAfterIssue:
+          type: integer
+          nullable: true
+        expectedIssueWithinBusinessDays:
+          type: integer
+          nullable: true
+    FinishSessionResponse:
+      type: object
+      required:
+        - sessionId
+        - sessionStatus
+        - userId
+        - score
+        - durationMs
+        - endReason
+        - startedAt
+        - finishedAt
+        - reward
+      properties:
+        sessionId:
+          type: string
+          format: uuid
+        sessionStatus:
+          type: string
+          enum: [FINISHED]
+        userId:
+          type: string
+        score:
+          type: integer
+        durationMs:
+          type: integer
+        endReason:
+          type: string
+        startedAt:
+          type: string
+          format: date-time
+        finishedAt:
+          type: string
+          format: date-time
+        reward:
+          $ref: '#/components/schemas/RewardResult'
+        serverValidation:
+          type: object
+          additionalProperties: true
+    SessionRecord:
+      type: object
+      required: [sessionId, userId, gameId, attemptNo, startedAt, status]
+      additionalProperties: true
+      properties:
+        sessionId:
+          type: string
+          format: uuid
+        userId:
+          type: string
+        gameId:
+          type: string
+        attemptNo:
+          type: integer
+        pointsCharged:
+          type: integer
+        startedAt:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [STARTED, FINISHED]
