@@ -1,0 +1,21 @@
+{
+  "name": "storellet-snake-api-starter",
+  "version": "1.1.0",
+  "private": true,
+  "description": "Mock REST API and integration reference for the Storellet snake game, including pause/resume session state support.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "check": "npm run check:server && npm run check:json",
+    "check:server": "node --check server.js",
+    "check:json": "node -e \"JSON.parse(require('fs').readFileSync('Storellet_Snake_API.postman_collection.json', 'utf8'))\""
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.21.2"
+  }
+}

@@ -1,0 +1,197 @@
+{
+  "info": {
+    "_postman_id": "6dc7a116-58dc-4ab5-8cbb-395c87d205fd",
+    "name": "Storellet Snake API 1.1",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000/api/v1"
+    },
+    {
+      "key": "userId",
+      "value": "139476290"
+    },
+    {
+      "key": "sessionId",
+      "value": ""
+    },
+    {
+      "key": "token",
+      "value": "uat-token-placeholder"
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "Get game config",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/game/config"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Config supports touch controls\", function () {",
+              "  pm.expect(pm.response.json().clientRules.supportsTouchControls).to.eql(true);",
+              "});",
+              "pm.test(\"Config supports pause and resume\", function () {",
+              "  pm.expect(pm.response.json().clientRules.supportsPauseResume).to.eql(true);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Get player status",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/game/users/{{userId}}/status"
+      }
+    },
+    {
+      "name": "Start game session",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "const body = pm.response.json();",
+              "if (body.sessionId) pm.collectionVariables.set('sessionId', body.sessionId);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Idempotency-Key",
+            "value": "{{$guid}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"userId\": \"{{userId}}\",\n  \"gameId\": \"storellet-snake\",\n  \"clientSessionId\": \"{{$guid}}\",\n  \"platform\": \"webview\",\n  \"appVersion\": \"uat\"\n}"
+        },
+        "url": "{{baseUrl}}/game/sessions/start"
+      }
+    },
+    {
+      "name": "Pause game session",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Session is paused\", function () {",
+              "  pm.expect(pm.response.code).to.eql(200);",
+              "  pm.expect(pm.response.json().sessionStatus).to.eql(\"PAUSED\");",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Idempotency-Key",
+            "value": "{{$guid}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"userId\": \"{{userId}}\",\n  \"clientEventId\": \"{{$guid}}\",\n  \"clientEventAt\": \"{{$isoTimestamp}}\"\n}"
+        },
+        "url": "{{baseUrl}}/game/sessions/{{sessionId}}/pause"
+      }
+    },
+    {
+      "name": "Resume game session",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Session is resumed\", function () {",
+              "  pm.expect(pm.response.code).to.eql(200);",
+              "  pm.expect(pm.response.json().sessionStatus).to.eql(\"STARTED\");",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Idempotency-Key",
+            "value": "{{$guid}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"userId\": \"{{userId}}\",\n  \"clientEventId\": \"{{$guid}}\",\n  \"clientEventAt\": \"{{$isoTimestamp}}\"\n}"
+        },
+        "url": "{{baseUrl}}/game/sessions/{{sessionId}}/resume"
+      }
+    },
+    {
+      "name": "Finish game session",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Idempotency-Key",
+            "value": "{{$guid}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"userId\": \"{{userId}}\",\n  \"score\": 35,\n  \"durationMs\": 95000,\n  \"endReason\": \"撞到障礙物\",\n  \"clientEventId\": \"{{$guid}}\",\n  \"clientFinishedAt\": \"{{$isoTimestamp}}\"\n}"
+        },
+        "url": "{{baseUrl}}/game/sessions/{{sessionId}}/finish"
+      }
+    },
+    {
+      "name": "Get session",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/game/sessions/{{sessionId}}"
+      }
+    }
+  ]
+}
